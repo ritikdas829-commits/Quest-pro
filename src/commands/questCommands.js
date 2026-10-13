@@ -11,7 +11,6 @@ import {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
-    StringSelectMenuBuilder,
     ComponentType,
     ModalBuilder,
     TextInputBuilder,
@@ -114,50 +113,7 @@ function buildErrorCard(err) {
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
 
-// --- SELECT MENU CARD FOR ?quest COMMAND ---
-function buildQuestSelectCard(quests) {
-    const ICONS = {
-        PLAY_ON_DESKTOP: '🖥️', WATCH_VIDEO: '🎬', STREAM_ON_DESKTOP: '📺',
-        PLAY_ACTIVITY: '🎮', WATCH_VIDEO_ON_MOBILE: '📱',
-    };
-
-    const lines = quests.map((q, i) => {
-        const tasks = (q.config.task_config ?? q.config.task_config_v2)?.tasks ?? {};
-        const taskKey = Object.keys(tasks)[0] ?? '';
-        const icon = ICONS[taskKey] ?? '⚙️';
-        const exp = Math.floor(new Date(q.config.expires_at).getTime() / 1000);
-        return `**${i + 1}.** ${icon} **${q.config.messages.quest_name}**\n> *${q.config.messages.game_title}*  •  Expires <t:${exp}:R>`;
-    }).join('\n\n');
-
-    const c = new ContainerBuilder().setAccentColor(0x5865F2);
-    c.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-            `# 🎮 ${quests.length} Quest${quests.length !== 1 ? 's' : ''} Available\n\n${lines}\n\n*Use the dropdown below to pick one.*`,
-        ),
-    );
-    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
-
-    const menu = new StringSelectMenuBuilder()
-        .setCustomId(`quest_select_${Date.now()}`)
-        .setPlaceholder('Pick a quest...')
-        .addOptions(
-            quests.map((q) => {
-                const tasks = (q.config.task_config ?? q.config.task_config_v2)?.tasks ?? {};
-                const taskKey = Object.keys(tasks)[0] ?? '';
-                return {
-                    label: q.config.messages.quest_name.slice(0, 100),
-                    description: q.config.messages.game_title.slice(0, 100),
-                    value: q.id,
-                    emoji: ICONS[taskKey] ?? '⚙️',
-                };
-            }),
-        );
-
-    c.addActionRowComponents(new ActionRowBuilder().addComponents(menu));
-    return { components: [c], flags: MessageFlags.IsComponentsV2 };
-}
-
-// --- ADVANCED QUEST SOLVER CARD ---
+// --- EXACT ADVANCED QUEST SOLVER CARD (With Enroll, Stop, Refresh buttons & Logs) ---
 export function buildQuestSolverCard(quest, phase = 'starting', progressData = {}, logs = []) {
     const cfg = quest.config;
     const msgs = cfg.messages;
@@ -168,8 +124,8 @@ export function buildQuestSolverCard(quest, phase = 'starting', progressData = {
         ? `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${cfg.assets.hero}.png` 
         : thumbUrl;
 
-    const enrolledDate = quest.enrolled_at ? new Date(quest.enrolled_at).toLocaleDateString('en-US') : new Date().toLocaleDateString('en-US');
-    const expiresDate = cfg.expires_at ? new Date(cfg.expires_at).toLocaleDateString('en-US') : 'N/A';
+    const enrolledDate = quest.enrolled_at ? new Date(quest.enrolled_at).toLocaleDateString('en-US') : '10/13/2026';
+    const expiresDate = cfg.expires_at ? new Date(cfg.expires_at).toLocaleDateString('en-US') : '10/18/2026';
 
     const PHASE = {
         starting: { color: 0x2B2D31, title: 'Quest Solver' },
@@ -179,6 +135,7 @@ export function buildQuestSolverCard(quest, phase = 'starting', progressData = {
     const p = PHASE[phase] || PHASE.starting;
     const isDone = phase === 'done';
 
+    // --- MAIN CONTAINER ---
     const c = new ContainerBuilder().setAccentColor(p.color);
 
     c.addTextDisplayComponents(
@@ -213,7 +170,7 @@ export function buildQuestSolverCard(quest, phase = 'starting', progressData = {
 
     const rewardLines = cfg.rewards_config?.rewards?.map(r => 
         `• **${r.messages?.name ?? 'Quest Reward'}** 🎁`
-    ).join('\n') || '• Acolyte Survivor Avatar Decoration';
+    ).join('\n') || '• Acolyte Survivor Avatar Decoration 🎁';
 
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(`## Rewards:\n${rewardLines}`)
@@ -233,6 +190,7 @@ export function buildQuestSolverCard(quest, phase = 'starting', progressData = {
     );
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
+    // Banner Image
     c.addMediaGalleryComponents(
         new MediaGalleryBuilder().addItems(
             new MediaGalleryItemBuilder().setURL(bannerUrl)
@@ -245,9 +203,10 @@ export function buildQuestSolverCard(quest, phase = 'starting', progressData = {
     );
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
+    // Action Buttons: Enroll, Stop, Refresh
     c.addActionRowComponents(
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`quest_start_${quest.id}`).setLabel('Start').setStyle(ButtonStyle.Secondary).setEmoji('▶️').setDisabled(isDone),
+            new ButtonBuilder().setCustomId(`quest_enroll_${quest.id}`).setLabel('Enroll').setStyle(ButtonStyle.Primary).setEmoji('⚠️'),
             new ButtonBuilder().setCustomId(`quest_stop_${quest.id}`).setLabel('Stop').setStyle(ButtonStyle.Secondary).setEmoji('⏹️'),
             new ButtonBuilder().setCustomId(`quest_refresh_${quest.id}`).setLabel('Refresh').setStyle(ButtonStyle.Secondary).setEmoji('🔄'),
         ),
@@ -259,13 +218,14 @@ export function buildQuestSolverCard(quest, phase = 'starting', progressData = {
         ),
     );
 
+    // --- LOGS CONTAINER ---
     const logContainer = new ContainerBuilder().setAccentColor(0x2B2D31);
     logContainer.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(`## 📄 Quest Logs`)
     );
     logContainer.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
-    const defaultLogs = `Quest selected\n[${new Date().toLocaleTimeString()}] Fast mode active (fast)\n[${new Date().toLocaleTimeString()}] 🎉 Quest in progress...`;
+    const defaultLogs = `Quest selected\n[${new Date().toLocaleTimeString()}] Refreshed quests`;
     const formattedLogs = logs.length > 0 ? logs.slice(-5).join('\n') : defaultLogs;
 
     logContainer.addTextDisplayComponents(
@@ -373,29 +333,12 @@ async function runQuestOne(userId, tokenStore, send) {
         const valid = manager.filterQuestsValid();
         if (valid.length === 0) { await send(buildNoQuestsCard()); return false; }
 
-        const selMsg = await send(buildQuestSelectCard(valid));
-
-        let selectedId;
-        try {
-            const interaction = await selMsg.awaitMessageComponent({
-                filter: (i) => i.user.id === userId,
-                time: 60_000,
-                componentType: ComponentType.StringSelect,
-            });
-            await interaction.deferUpdate();
-            selectedId = interaction.values[0];
-        } catch {
-            const c = new ContainerBuilder().setAccentColor(0xED4245);
-            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⏱️ Timed Out\nNo quest was selected within 60 seconds. Run \`${PREFIX}quest\` again.`));
-            await selMsg.edit({ components: [c], flags: MessageFlags.IsComponentsV2 });
-            return false;
-        }
-
-        const quest = valid.find((q) => q.id === selectedId);
+        // Dropdown ko bypass karke directly Quest Solver card show karega
+        const quest = valid[0];
         const logs = [];
         const log = (m) => { console.log(m); logs.push(m); };
 
-        const progressMsg = await selMsg.edit(buildQuestSolverCard(quest, 'starting', {}, logs));
+        const progressMsg = await send(buildQuestSolverCard(quest, 'starting', {}, logs));
 
         const questDone = await manager.doingQuest(quest, log);
 
@@ -430,7 +373,8 @@ async function runQuestAll(userId, tokenStore, send) {
         const valid = manager.filterQuestsValid();
         if (valid.length === 0) { await send(buildNoQuestsCard()); return false; }
 
-        const progressMsgs = await Promise.all(valid.map((q) => send(buildQuestInfoCard(q, 'starting'))));
+        // Questall ke liye bhi naya updated solver card approach render karega
+        const progressMsgs = await Promise.all(valid.map((q) => send(buildQuestSolverCard(q, 'starting'))));
 
         const questLogs = valid.map(() => []);
         const questResults = await Promise.allSettled(
@@ -449,7 +393,7 @@ async function runQuestAll(userId, tokenStore, send) {
             const reason = questResults[idx].status === 'rejected'
                 ? questResults[idx].reason?.message ?? 'Unknown error'
                 : failLogs.slice(-2).join('\n') || questLogs[idx].slice(-3).join('\n') || 'Could not be completed automatically.';
-            return progressMsgs[idx].edit(buildQuestInfoCard(q, 'failed', 0, reason));
+            return progressMsgs[idx].edit(buildQuestSolverCard(q, 'failed', {}, questLogs[idx]));
         }));
 
         if (completed.length === 0) {
@@ -464,7 +408,7 @@ async function runQuestAll(userId, tokenStore, send) {
 
         await Promise.allSettled(completed.map((q, i) => {
             const idx = valid.indexOf(q);
-            return progressMsgs[idx].edit(buildQuestInfoCard(q, 'done', i === 0 ? claimed : claimedPer));
+            return progressMsgs[idx].edit(buildQuestSolverCard(q, 'done', { desktop: '100%' }, questLogs[idx]));
         }));
         return true;
 
