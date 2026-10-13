@@ -11,6 +11,7 @@ import {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
+    StringSelectMenuBuilder,
     ComponentType,
     ModalBuilder,
     TextInputBuilder,
