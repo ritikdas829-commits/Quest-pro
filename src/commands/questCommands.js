@@ -6,16 +6,16 @@ import {
     SeparatorSpacingSize,
     SectionBuilder,
     ThumbnailBuilder,
+    MediaGalleryBuilder,
+    MediaGalleryItemBuilder,
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
-    StringSelectMenuBuilder,
     ComponentType,
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
     MessageFlags,
-    Colors,
 } from 'discord.js';
 import { QuestClient } from '../quest/questClient.js';
 import { TokenStore } from '../quest/tokenStore.js';
@@ -113,53 +113,128 @@ function buildErrorCard(err) {
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
 
-function buildQuestSelectCard(quests) {
-    const ICONS = {
-        PLAY_ON_DESKTOP: '🖥️', WATCH_VIDEO: '🎬', STREAM_ON_DESKTOP: '📺',
-        PLAY_ACTIVITY: '🎮', WATCH_VIDEO_ON_MOBILE: '📱',
+// --- NEW ADVANCED QUEST SOLVER CARD (Replaces Dropdown Flow) ---
+export function buildQuestSolverCard(quest, phase = 'starting', progressData = {}, logs = []) {
+    const cfg = quest.config;
+    const msgs = cfg.messages;
+    const appId = cfg.application.id;
+
+    const thumbUrl = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${cfg.assets.game_tile}.png`;
+    const bannerUrl = cfg.assets.hero 
+        ? `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${cfg.assets.hero}.png` 
+        : thumbUrl;
+
+    const enrolledDate = quest.enrolled_at ? new Date(quest.enrolled_at).toLocaleDateString('en-US') : new Date().toLocaleDateString('en-US');
+    const expiresDate = cfg.expires_at ? new Date(cfg.expires_at).toLocaleDateString('en-US') : 'N/A';
+
+    const PHASE = {
+        starting: { color: 0x2B2D31, title: 'Quest Solver' },
+        done: { color: 0x57F287, title: 'Quest Solver' },
+        failed: { color: 0xED4245, title: 'Quest Solver' },
     };
+    const p = PHASE[phase] || PHASE.starting;
+    const isDone = phase === 'done';
 
-    const lines = quests.map((q, i) => {
-        const tasks = (q.config.task_config ?? q.config.task_config_v2)?.tasks ?? {};
-        const taskKey = Object.keys(tasks)[0] ?? '';
-        const icon = ICONS[taskKey] ?? '⚙️';
-        const exp = Math.floor(new Date(q.config.expires_at).getTime() / 1000);
-        return `**${i + 1}.** ${icon} **${q.config.messages.quest_name}**\n> *${q.config.messages.game_title}*  •  Expires <t:${exp}:R>`;
-    }).join('\n\n');
+    const c = new ContainerBuilder().setAccentColor(p.color);
 
-    const c = new ContainerBuilder().setAccentColor(0x5865F2);
+    c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`# 🛡️ ${p.title}`),
+    );
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+
     c.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-            `# 🎮 ${quests.length} Quest${quests.length !== 1 ? 's' : ''} Available\n${lines}\n\n*Use the dropdown below to pick one.*`,
+            `• **Game:** ${msgs.game_title}\n` +
+            `• **Publisher:** ${msgs.game_publisher}\n` +
+            `• **Quest Name:** ${msgs.quest_name}\n` +
+            `• **Enrolled At:** ${enrolledDate}\n` +
+            `• **Expires At:** ${expiresDate}\n` +
+            `• **Progress:**`
+        ),
+    );
+
+    const desktopProgress = progressData.desktop ?? (isDone ? '100%' : '0%');
+    const xboxProgress = progressData.xbox ?? (isDone ? '100%' : '100%');
+    const psProgress = progressData.playstation ?? (isDone ? '100%' : '100%');
+
+    c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+            `${isDone ? '✅' : '⏳'} **${isDone ? '100%' : desktopProgress}**\n` +
+            `🖥️ **Desktop:** ${desktopProgress}\n` +
+            `🟢 **Xbox:** ${xboxProgress}\n` +
+            `🔵 **PlayStation:** ${psProgress}`
         ),
     );
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
 
-    const menu = new StringSelectMenuBuilder()
-        .setCustomId(`quest_select_${Date.now()}`)
-        .setPlaceholder('Pick a quest...')
-        .addOptions(
-            quests.map((q) => {
-                const tasks = (q.config.task_config ?? q.config.task_config_v2)?.tasks ?? {};
-                const taskKey = Object.keys(tasks)[0] ?? '';
-                return {
-                    label: q.config.messages.quest_name.slice(0, 100),
-                    description: q.config.messages.game_title.slice(0, 100),
-                    value: q.id,
-                    emoji: ICONS[taskKey] ?? '⚙️',
-                };
-            }),
-        );
+    const rewardLines = cfg.rewards_config?.rewards?.map(r => 
+        `• **${r.messages?.name ?? 'Quest Reward'}** 🎁`
+    ).join('\n') || '• Acolyte Survivor Avatar Decoration';
 
-    c.addActionRowComponents(new ActionRowBuilder().addComponents(menu));
-    return { components: [c], flags: MessageFlags.IsComponentsV2 };
+    c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`## Rewards:\n${rewardLines}`)
+    );
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+
+    const taskConfig = cfg.task_config ?? cfg.task_config_v2;
+    const taskLines = Object.entries(taskConfig?.tasks ?? {}).map(([type, t]) => {
+        if (type === 'PLAY_ON_DESKTOP') return `• Play On Desktop for ${Math.ceil((t.target || 0) / 60)}m`;
+        if (type === 'PLAY_ON_XBOX') return `• Play On Xbox ${t.target} times`;
+        if (type === 'PLAY_ON_PLAYSTATION') return `• Play On Playstation ${t.target} times`;
+        return `• ${type.replace(/_/g, ' ')} for${t.target}`;
+    }).join('\n') || '• Play On Desktop for 15m';
+
+    c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`## Tasks:\n${taskLines}`)
+    );
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+
+    c.addMediaGalleryComponents(
+        new MediaGalleryBuilder().addItems(
+            new MediaGalleryItemBuilder().setURL(bannerUrl)
+        )
+    );
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+
+    c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`✅ **${msgs.game_title}:${msgs.quest_name.slice(0, 25)}..**`)
+    );
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+
+    c.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`quest_start_${quest.id}`).setLabel('Start').setStyle(ButtonStyle.Secondary).setEmoji('▶️').setDisabled(isDone),
+            new ButtonBuilder().setCustomId(`quest_stop_${quest.id}`).setLabel('Stop').setStyle(ButtonStyle.Secondary).setEmoji('⏹️'),
+            new ButtonBuilder().setCustomId(`quest_refresh_${quest.id}`).setLabel('Refresh').setStyle(ButtonStyle.Secondary).setEmoji('🔄'),
+        ),
+    );
+
+    c.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setLabel('View Quest').setStyle(ButtonStyle.Link).setURL(`https://discord.com/quests/${quest.id}`).setEmoji('🔗')
+        ),
+    );
+
+    const logContainer = new ContainerBuilder().setAccentColor(0x2B2D31);
+    logContainer.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`## 📄 Quest Logs`)
+    );
+    logContainer.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+
+    const defaultLogs = `Quest selected\n[${new Date().toLocaleTimeString()}] Fast mode active (fast)\n[${new Date().toLocaleTimeString()}] 🎉 Quest in progress...`;
+    const formattedLogs = logs.length > 0 ? logs.slice(-5).join('\n') : defaultLogs;
+
+    logContainer.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`\`\`\`ansi\n${formattedLogs}\n\`\`\``)
+    );
+
+    return { components: [c, logContainer], flags: MessageFlags.IsComponentsV2 };
 }
 
 function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '') {
     const cfg  = quest.config;
     const msgs = cfg.messages;
     const appId = cfg.application.id;
-
     const thumbUrl = `https://cdn.discordapp.com/app-assets/${appId}/quest-assets/${cfg.assets.game_tile}.png`;
 
     const TASK_META = {
@@ -179,7 +254,7 @@ function buildQuestInfoCard(quest, phase, claimed = 0, failReason = '') {
             const s = task.target;
             dur = s >= 60 ? `  •  **${Math.ceil(s / 60)} min**` : `  •  **${s}s**`;
         }
-        return `${meta.icon} ${meta.label}${dur}${phase === 'done' ? '  ✅' : ''}`;
+        return `${meta.icon}${meta.label}${dur}${phase === 'done' ? '  ✅' : ''}`;
     });
 
     const rewardLines = cfg.rewards_config.rewards.map((r) => {
@@ -254,41 +329,23 @@ async function runQuestOne(userId, tokenStore, send) {
         const valid = manager.filterQuestsValid();
         if (valid.length === 0) { await send(buildNoQuestsCard()); return false; }
 
-        const selMsg = await send(buildQuestSelectCard(valid));
-
-        let selectedId;
-        try {
-            const interaction = await selMsg.awaitMessageComponent({
-                filter: (i) => i.user.id === userId,
-                time: 60_000,
-                componentType: ComponentType.StringSelect,
-            });
-            await interaction.deferUpdate();
-            selectedId = interaction.values[0];
-        } catch {
-            const c = new ContainerBuilder().setAccentColor(0xED4245);
-            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⏱️ Timed Out\nNo quest was selected within 60 seconds. Run \`${PREFIX}quest\` again.`));
-            await selMsg.edit({ components: [c], flags: MessageFlags.IsComponentsV2 });
-            return false;
-        }
-
-        await selMsg.edit({ components: [], flags: MessageFlags.IsComponentsV2 });
-
-        const quest = valid.find((q) => q.id === selectedId);
-        const progressMsg = await send(buildQuestInfoCard(quest, 'starting'));
-
+        // Automatically pick the first quest and render the Solver Card immediately (Bypassing Dropdown)
+        const quest = valid[0];
         const logs = [];
         const log = (m) => { console.log(m); logs.push(m); };
+
+        const progressMsg = await send(buildQuestSolverCard(quest, 'starting', {}, logs));
+
         const questDone = await manager.doingQuest(quest, log);
 
         if (!questDone) {
             const failReason = logs.filter(l => l.startsWith('[FAIL]')).slice(-2).join('\n') || logs.slice(-3).join('\n') || 'Could not be completed automatically.';
-            await progressMsg.edit(buildQuestInfoCard(quest, 'failed', 0, failReason));
+            await progressMsg.edit(buildQuestSolverCard(quest, 'failed', {}, logs));
             return false;
         }
 
         const claimed = await manager.claimRewards(log).catch(() => 0);
-        await progressMsg.edit(buildQuestInfoCard(quest, 'done', claimed));
+        await progressMsg.edit(buildQuestSolverCard(quest, 'done', { desktop: '100%' }, logs));
         return true;
 
     } catch (err) {
