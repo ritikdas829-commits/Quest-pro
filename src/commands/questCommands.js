@@ -113,7 +113,50 @@ function buildErrorCard(err) {
     return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
 
-// --- NEW ADVANCED QUEST SOLVER CARD (Replaces Dropdown Flow) ---
+// --- SELECT MENU CARD FOR ?quest COMMAND ---
+function buildQuestSelectCard(quests) {
+    const ICONS = {
+        PLAY_ON_DESKTOP: '🖥️', WATCH_VIDEO: '🎬', STREAM_ON_DESKTOP: '📺',
+        PLAY_ACTIVITY: '🎮', WATCH_VIDEO_ON_MOBILE: '📱',
+    };
+
+    const lines = quests.map((q, i) => {
+        const tasks = (q.config.task_config ?? q.config.task_config_v2)?.tasks ?? {};
+        const taskKey = Object.keys(tasks)[0] ?? '';
+        const icon = ICONS[taskKey] ?? '⚙️';
+        const exp = Math.floor(new Date(q.config.expires_at).getTime() / 1000);
+        return `**${i + 1}.** ${icon} **${q.config.messages.quest_name}**\n> *${q.config.messages.game_title}*  •  Expires <t:${exp}:R>`;
+    }).join('\n\n');
+
+    const c = new ContainerBuilder().setAccentColor(0x5865F2);
+    c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+            `# 🎮 ${quests.length} Quest${quests.length !== 1 ? 's' : ''} Available\n\n${lines}\n\n*Use the dropdown below to pick one.*`,
+        ),
+    );
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId(`quest_select_${Date.now()}`)
+        .setPlaceholder('Pick a quest...')
+        .addOptions(
+            quests.map((q) => {
+                const tasks = (q.config.task_config ?? q.config.task_config_v2)?.tasks ?? {};
+                const taskKey = Object.keys(tasks)[0] ?? '';
+                return {
+                    label: q.config.messages.quest_name.slice(0, 100),
+                    description: q.config.messages.game_title.slice(0, 100),
+                    value: q.id,
+                    emoji: ICONS[taskKey] ?? '⚙️',
+                };
+            }),
+        );
+
+    c.addActionRowComponents(new ActionRowBuilder().addComponents(menu));
+    return { components: [c], flags: MessageFlags.IsComponentsV2 };
+}
+
+// --- ADVANCED QUEST SOLVER CARD ---
 export function buildQuestSolverCard(quest, phase = 'starting', progressData = {}, logs = []) {
     const cfg = quest.config;
     const msgs = cfg.messages;
@@ -329,17 +372,33 @@ async function runQuestOne(userId, tokenStore, send) {
         const valid = manager.filterQuestsValid();
         if (valid.length === 0) { await send(buildNoQuestsCard()); return false; }
 
-        // Automatically pick the first quest and render the Solver Card immediately (Bypassing Dropdown)
-        const quest = valid[0];
+        const selMsg = await send(buildQuestSelectCard(valid));
+
+        let selectedId;
+        try {
+            const interaction = await selMsg.awaitMessageComponent({
+                filter: (i) => i.user.id === userId,
+                time: 60_000,
+                componentType: ComponentType.StringSelect,
+            });
+            await interaction.deferUpdate();
+            selectedId = interaction.values[0];
+        } catch {
+            const c = new ContainerBuilder().setAccentColor(0xED4245);
+            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ⏱️ Timed Out\nNo quest was selected within 60 seconds. Run \`${PREFIX}quest\` again.`));
+            await selMsg.edit({ components: [c], flags: MessageFlags.IsComponentsV2 });
+            return false;
+        }
+
+        const quest = valid.find((q) => q.id === selectedId);
         const logs = [];
         const log = (m) => { console.log(m); logs.push(m); };
 
-        const progressMsg = await send(buildQuestSolverCard(quest, 'starting', {}, logs));
+        const progressMsg = await selMsg.edit(buildQuestSolverCard(quest, 'starting', {}, logs));
 
         const questDone = await manager.doingQuest(quest, log);
 
         if (!questDone) {
-            const failReason = logs.filter(l => l.startsWith('[FAIL]')).slice(-2).join('\n') || logs.slice(-3).join('\n') || 'Could not be completed automatically.';
             await progressMsg.edit(buildQuestSolverCard(quest, 'failed', {}, logs));
             return false;
         }
