@@ -1,4 +1,4 @@
-// : ! Synora 乂 Development !
+// : ! jeneyx Developer 乂 Development !
 // + Discord: its2yashpatel_
 // + Community: https://dsc.gg/synoraxdev (Synora 乂 Development)
 // + for any queries reach out Community or DM me.
