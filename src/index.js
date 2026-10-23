@@ -3,6 +3,7 @@ import { Client, GatewayIntentBits, Collection, Partials } from 'discord.js';
 import { readdirSync, writeFileSync, existsSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
+import http from 'http';
 import deployCommands from './utils/deployCommands.js';
 import { makeTokenStore } from './commands/questCommands.js';
 import * as dbModule from './utils/db.js';
@@ -36,6 +37,15 @@ function banner() {
 
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error('DISCORD_TOKEN is not set.'); process.exit(1); }
+
+// 🌐 Create a simple HTTP Server for Render Web Service Port Binding
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot is active and running 24/7!');
+}).listen(PORT, () => {
+    console.log(`${col.green}● Web Server running on port ${PORT}${col.reset}`);
+});
 
 // Safe MongoDB Connection
 const connectDB = dbModule.connectDB || dbModule.default;
