@@ -37,7 +37,7 @@ function banner() {
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error('DISCORD_TOKEN is not set.'); process.exit(1); }
 
-// MongoDB Connection Logic
+// Safe MongoDB Connection
 const connectDB = dbModule.connectDB || dbModule.default;
 if (typeof connectDB === 'function') {
     try {
@@ -48,7 +48,7 @@ if (typeof connectDB === 'function') {
     }
 }
 
-// Ensure local json files exist as fallback
+// Ensure data files exist as fallback
 if (!existsSync('tokens.json'))    writeFileSync('tokens.json', '{}');
 if (!existsSync('autoquest.json')) writeFileSync('autoquest.json', '[]');
 
