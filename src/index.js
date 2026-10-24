@@ -1,12 +1,11 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits, Collection, Partials } from 'discord.js';
-import { readdirSync, writeFileSync, existsSync } from 'fs';
+import { readdirSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
-import http from 'http';
 import deployCommands from './utils/deployCommands.js';
 import { makeTokenStore } from './commands/questCommands.js';
-import * as dbModule from './utils/db.js';
+import { writeFileSync, existsSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -38,27 +37,7 @@ function banner() {
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error('DISCORD_TOKEN is not set.'); process.exit(1); }
 
-// 🌐 Create a simple HTTP Server for Render Web Service Port Binding
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is active and running 24/7!');
-}).listen(PORT, () => {
-    console.log(`${col.green}● Web Server running on port ${PORT}${col.reset}`);
-});
-
-// Safe MongoDB Connection
-const connectDB = dbModule.connectDB || dbModule.default;
-if (typeof connectDB === 'function') {
-    try {
-        await connectDB();
-        console.log(`${col.green}● MongoDB Connected Successfully${col.reset}`);
-    } catch (e) {
-        console.warn(`${col.purple}● MongoDB Failed: ${e.message}${col.reset} — Fallback to JSON files`);
-    }
-}
-
-// Ensure data files exist as fallback
+// Ensure data files exist
 if (!existsSync('tokens.json'))    writeFileSync('tokens.json', '{}');
 if (!existsSync('autoquest.json')) writeFileSync('autoquest.json', '[]');
 
@@ -82,11 +61,13 @@ client.tokenStore     = makeTokenStore(TOKEN);
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
     const mod = await import(pathToFileURL(join(__dirname, 'commands', file)).href);
+    // Single default export
     if (mod.default) {
         const cmd = mod.default;
         if (cmd?.data)   client.commands.set(cmd.data.name, cmd);
         if (cmd?.prefix) client.prefixCommands.set(cmd.prefix, cmd);
     }
+    // Named exports (questCommands.js has multiple)
     for (const [key, cmd] of Object.entries(mod)) {
         if (key === 'default' || key === 'makeTokenStore' || key === 'handleLinkModal' || key === 'handleLinkPromptButton' || key === 'runAutoquestForUser') continue;
         if (cmd?.data)   client.commands.set(cmd.data.name, cmd);
