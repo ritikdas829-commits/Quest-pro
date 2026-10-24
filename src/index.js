@@ -1,11 +1,11 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits, Collection, Partials } from 'discord.js';
-import { readdirSync } from 'fs';
+import { readdirSync, writeFileSync, existsSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
+import http from 'http';
 import deployCommands from './utils/deployCommands.js';
 import { makeTokenStore } from './commands/questCommands.js';
-import { writeFileSync, existsSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -37,6 +37,15 @@ function banner() {
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error('DISCORD_TOKEN is not set.'); process.exit(1); }
 
+// 🌐 Web Server to keep Render Web Service active without port timeout
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot is active and running 24/7!');
+}).listen(PORT, () => {
+    console.log(`${col.green}● Web Server running on port ${PORT}${col.reset}`);
+});
+
 // Ensure data files exist
 if (!existsSync('tokens.json'))    writeFileSync('tokens.json', '{}');
 if (!existsSync('autoquest.json')) writeFileSync('autoquest.json', '[]');
@@ -50,8 +59,10 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildPresences,
     ],
-    partials: [Partials.Message, Partials.Channel],
+    partials: [Partials.Message, Partials.Channel, Partials.GuildMember],
 });
 
 client.commands       = new Collection();
