@@ -37,12 +37,12 @@ function banner() {
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error('DISCORD_TOKEN is not set.'); process.exit(1); }
 
-// 🌐 Web Server to keep Render Web Service active without port timeout
+// 🌐 Web Server bound to 0.0.0.0 and PORT for Render Web Service
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Bot is active and running 24/7!');
-}).listen(PORT, () => {
+}).listen(PORT, '0.0.0.0', () => {
     console.log(`${col.green}● Web Server running on port ${PORT}${col.reset}`);
 });
 
@@ -72,13 +72,11 @@ client.tokenStore     = makeTokenStore(TOKEN);
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
     const mod = await import(pathToFileURL(join(__dirname, 'commands', file)).href);
-    // Single default export
     if (mod.default) {
         const cmd = mod.default;
         if (cmd?.data)   client.commands.set(cmd.data.name, cmd);
         if (cmd?.prefix) client.prefixCommands.set(cmd.prefix, cmd);
     }
-    // Named exports (questCommands.js has multiple)
     for (const [key, cmd] of Object.entries(mod)) {
         if (key === 'default' || key === 'makeTokenStore' || key === 'handleLinkModal' || key === 'handleLinkPromptButton' || key === 'runAutoquestForUser') continue;
         if (cmd?.data)   client.commands.set(cmd.data.name, cmd);
