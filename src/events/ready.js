@@ -19,7 +19,7 @@ const col = {
 const line = `${col.purple}${col.bright}  ─────────────────────────────────────${col.reset}`;
 
 export default {
-    name: 'clientReady',
+    name: 'ready',
     once: true,
     async execute(client) {
         client.user.setPresence({
