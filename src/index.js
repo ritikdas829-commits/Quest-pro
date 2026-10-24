@@ -24,7 +24,7 @@ function banner() {
         `${col.blue}${col.bright}  ██║   ██║██║     ██║   ██║╚██║${col.reset}`,
         `${col.blue}${col.bright}  ██║▄▄ ██║██║     ╚██╗ ██╔╝ ██║${col.reset}`,
         `${col.white}${col.bright}  ╚██████╔╝╚██████╗ ╚████╔╝  ██║${col.reset}`,
-        `${col.white}${col.bright}   ╚══▀▀═╝  ╚═════╝  ╚═══╝   ╚═╝${col.reset}`,
+        `${col.white}${col.bright}   ╚══▀▀═╝  ╚═════╝  ╚═══╝   ╚══╝${col.reset}`,
         '',
         `${col.dim}  ─────────────────────────────────────────────────${col.reset}`,
         `  ${col.green}●${col.reset} ${col.white}Quest Completer V1${col.reset}  ${col.dim}|${col.reset}   ${col.white}dsc.gg/synoraxdev${col.reset}`,
@@ -51,7 +51,6 @@ if (!existsSync('tokens.json'))    writeFileSync('tokens.json', '{}');
 if (!existsSync('autoquest.json')) writeFileSync('autoquest.json', '[]');
 
 banner();
-await deployCommands(TOKEN, process.env.DISCORD_CLIENT_ID);
 
 const client = new Client({
     intents: [
@@ -69,6 +68,7 @@ client.commands       = new Collection();
 client.prefixCommands = new Collection();
 client.tokenStore     = makeTokenStore(TOKEN);
 
+// Load Commands
 const commandFiles = readdirSync(join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 for (const file of commandFiles) {
     const mod = await import(pathToFileURL(join(__dirname, 'commands', file)).href);
@@ -84,6 +84,7 @@ for (const file of commandFiles) {
     }
 }
 
+// Load Events
 const eventFiles = readdirSync(join(__dirname, 'events')).filter(f => f.endsWith('.js'));
 for (const file of eventFiles) {
     const mod   = await import(pathToFileURL(join(__dirname, 'events', file)).href);
@@ -95,4 +96,10 @@ for (const file of eventFiles) {
     }
 }
 
-client.login(TOKEN);
+// 🚀 Login and handle command deployment safely in background
+client.login(TOKEN).then(() => {
+    console.log('Bot login initiated successfully.');
+    deployCommands(TOKEN, process.env.DISCORD_CLIENT_ID).catch(console.error);
+}).catch((err) => {
+    console.error('FAILED TO LOGIN TO DISCORD:', err);
+});
